@@ -4895,6 +4895,7 @@ async def audio_transcriptions(
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 
 from litellm import _arealtime
+from litellm.proxy.websocket_handler import handle_websocket_client
 
 
 @app.websocket("/v1/realtime")
@@ -4977,6 +4978,49 @@ async def websocket_endpoint(
     except Exception:
         verbose_proxy_logger.exception("Internal server error")
         await websocket.close(code=1011, reason="Internal server error")
+
+
+@app.websocket("/v1/chat/completions/ws")
+@app.websocket("/chat/completions/ws")
+async def websocket_chat_endpoint(
+    websocket: WebSocket,
+    user_api_key_dict=Depends(user_api_key_auth_websocket),
+):
+    """
+    WebSocket endpoint for bidirectional chat completions.
+    
+    Clients can maintain persistent connections and send multiple chat requests.
+    
+    Message format:
+    Request: {
+        "type": "chat_completion",
+        "request_id": "optional-uuid",
+        "model": "gpt-4",
+        "messages": [...],
+        "stream": true,
+        ...other completion params
+    }
+    
+    Response for streaming:
+    {
+        "type": "stream_chunk",
+        "request_id": "uuid",
+        "data": {chunk data}
+    }
+    
+    Response for non-streaming:
+    {
+        "type": "completion", 
+        "request_id": "uuid",
+        "data": {completion data}
+    }
+    """
+    await handle_websocket_client(
+        websocket=websocket,
+        user_api_key_dict=user_api_key_dict,
+        llm_router=llm_router,
+        proxy_config=proxy_config
+    )
 
 
 ######################################################################
